@@ -126,7 +126,7 @@ function AccountSettingsPage({ viewerName, onDeleted, onNavigate }: { viewerName
   const [username, setUsername] = useState(viewerName);
   const [preferredLanguage, setPreferredLanguage] = useState('en');
   const [languages, setLanguages] = useState<{ code: string; label: string }[]>([{ code: 'en', label: 'English' }]);
-  const [currentPassword, setCurrentPassword] = useState('');
+
   const [newEmail, setNewEmail] = useState('');
   const [emailPassword, setEmailPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -278,7 +278,7 @@ function AdminPage({ signedIn, onAuthenticated, onNavigate }: { signedIn: boolea
 
 function StreamVoiceApp() {
   const [signedIn, setSignedIn] = useState(false);
-  const [authReady, setAuthReady] = useState(true);
+  const [, setAuthReady] = useState(true);
   const authActionRef = useRef(0);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [page, setPage] = useState<Page>(() => window.location.pathname === '/downloads' ? 'downloads' : window.location.pathname === '/console' ? 'console' : window.location.pathname === '/account' ? 'account' : window.location.pathname === '/settings' ? 'settings' : window.location.pathname === '/admin' ? 'admin' : window.location.pathname === '/terms' ? 'terms' : window.location.pathname === '/privacy' ? 'privacy' : 'home');
@@ -309,11 +309,13 @@ function StreamVoiceApp() {
   const [chatSearch, setChatSearch] = useState('');
   const [moderationPreview, setModerationPreview] = useState(true);
   const [events, setEvents] = useState<string[]>(['Ready. Connect a platform to begin.', 'YouTube integration is ready for OAuth setup.']);
-  const [youtubePageToken, setYoutubePageToken] = useState('');
-  const [youtubeBootstrapped, setYoutubeBootstrapped] = useState(false);
+
   const chatAfterRef = useRef(0);
+  const [, setYoutubePageToken] = useState('');
+  const [, setYoutubeBootstrapped] = useState(false);
   const youtubePageTokenRef = useRef('');
-  const [twitchFollows, setTwitchFollows] = useState<string[]>([]);
+
+  const [, setTwitchFollows] = useState<string[]>([]);
   const [beatSaber, setBeatSaber] = useState<{ paired: boolean; connected: boolean; pairingCode?: string; lastSeen?: number; protocol?: string; gameVersion?: string; modVersion?: string }>({ paired: false, connected: false });
   const [beatSaberToken, setBeatSaberToken] = useState('');
   const [bsrRequests, setBsrRequests] = useState<BsrRequest[]>([]);
@@ -329,7 +331,6 @@ function StreamVoiceApp() {
   const isRootOAuthCallback = window.location.pathname === '/' && callbackParams.has('code') && callbackParams.has('state');
   const isYouTubeCallback = isRootOAuthCallback && callbackState.startsWith('yt-');
   const isTikTokCallback = isRootOAuthCallback && callbackState.startsWith('tk-');
-  const isTwitchCallback = isRootOAuthCallback && !isYouTubeCallback && !isTikTokCallback;
   const [twitchCallbackMessage, setTwitchCallbackMessage] = useState('Finishing Twitch authorization…');
   const [youtubeCallbackMessage, setYoutubeCallbackMessage] = useState('Finishing YouTube authorization…');
   const [tiktokCallbackMessage, setTiktokCallbackMessage] = useState('Finishing TikTok authorization…');
@@ -984,7 +985,6 @@ function StreamVoiceApp() {
               const state = platforms[platform];
               const isYouTube = platform === 'YouTube';
               const isTwitch = platform === 'Twitch';
-              const isTikTok = platform === 'TikTok';
               return <div key={platform} className="rounded-3xl border border-white/10 bg-slate-900 p-5">
                 <div className="mb-4 flex items-start justify-between"><div className="flex items-center gap-3"><div className="rounded-xl bg-white/5 p-2">{isYouTube ? <Youtube size={20} /> : <Radio size={20} />}</div><div><div className="font-medium">{platform}</div><div className="text-xs text-slate-500">{state.channel}</div></div></div><span className={state.live ? 'rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[11px] text-emerald-300' : 'rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-400'}>{state.live ? 'LIVE' : state.connected ? 'Connected' : 'Offline'}</span></div>
                 <div className="mb-4 grid grid-cols-2 gap-2 text-xs"><div className="rounded-xl bg-white/5 p-3"><div className="text-slate-500">Chat TTS</div><div className="mt-1 font-medium">{state.connected ? (readMessages ? 'Ready' : 'Muted') : 'Not connected'}</div></div><div className="rounded-xl bg-white/5 p-3"><div className="text-slate-500">App integration</div><div className="mt-1 font-medium">{isYouTube ? (youtubeConfigured ? 'Ready for all accounts' : 'App setup needed') : isTwitch ? (twitchConfigured ? 'Ready for all accounts' : 'App setup needed') : (tiktokConfigured ? 'Ready for all accounts' : 'App setup needed')}</div></div></div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState, type ComponentType } from 'react';
 import { Activity, CheckCircle2, LogOut, RefreshCw, Search, Shield, UserRound, WifiOff } from 'lucide-react';
 import { api } from './api';
 
@@ -27,7 +27,7 @@ export default function DeveloperDashboard() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selected, setSelected] = useState<UserDetail | null>(null);
   const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -128,7 +128,12 @@ export default function DeveloperDashboard() {
       <main className="mx-auto max-w-7xl space-y-6 px-6 py-8">
         {message && <div className="rounded-2xl border border-white/10 bg-slate-900 p-4 text-sm text-slate-300">{message}</div>}
         <section className="grid gap-4 md:grid-cols-4">
-          {[['Accounts', String(users.length), UserRound], ['Profile directory', users.length ? 'Online' : 'Waiting', Activity], ['Admin authentication', 'Secrets only', Shield], ['Admin session', 'Protected', CheckCircle2]].map(([label, value, Icon]) => <div key={String(label)} className="rounded-3xl border border-white/10 bg-slate-900 p-5"><Icon size={18} className="text-cyan-300" /><div className="mt-4 text-xs text-slate-500">{label}</div><div className="mt-1 text-lg font-semibold">{value}</div></div>)}
+          {([
+            { label: 'Accounts', value: String(users.length), Icon: UserRound },
+            { label: 'Profile directory', value: users.length ? 'Online' : 'Waiting', Icon: Activity },
+            { label: 'Admin authentication', value: 'Secrets only', Icon: Shield },
+            { label: 'Admin session', value: 'Protected', Icon: CheckCircle2 },
+          ] satisfies { label: string; value: string; Icon: ComponentType<{ size?: number; className?: string }> }[]).map(({ label, value, Icon }) => <div key={label} className="rounded-3xl border border-white/10 bg-slate-900 p-5"><Icon size={18} className="text-cyan-300" /><div className="mt-4 text-xs text-slate-500">{label}</div><div className="mt-1 text-lg font-semibold">{value}</div></div>)}
         </section>
         <section className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
           <div className="rounded-3xl border border-white/10 bg-slate-900 p-5">
