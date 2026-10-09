@@ -1,0 +1,97 @@
+[
+  {
+    "name": "Restore a persistent StreamVoice login",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "login page",
+      "persistent session",
+      "clear authentication errors"
+    ],
+    "description": "Verifies login and saved-session restore.",
+    "steps": [
+      "Open StreamVoice signed out",
+      "Log in with a valid account",
+      "Refresh the website"
+    ],
+    "expected": "The console remains signed in and authentication errors are readable."
+  },
+  {
+    "name": "Create an account and immediately restore its session",
+    "viewport": "desktop",
+    "covers": [
+      "account signup",
+      "automatic login session creation",
+      "duplicate identity validation"
+    ],
+    "description": "Verifies signup creates a usable persistent session.",
+    "steps": [
+      "Open Create an account",
+      "Submit valid account details",
+      "Refresh the website"
+    ],
+    "expected": "The new account remains signed in and invalid duplicate identities are rejected."
+  },
+  {
+    "name": "Save and reload account settings",
+    "viewport": "desktop",
+    "covers": [
+      "account settings",
+      "preferred language persistence"
+    ],
+    "description": "Verifies account settings persist.",
+    "steps": [
+      "Open Account Settings",
+      "Change preferred language and save",
+      "Reload settings"
+    ],
+    "expected": "The saved language remains selected."
+  },
+  {
+    "name": "Reject invalid account-setting changes",
+    "viewport": "mobile",
+    "covers": [
+      "invalid email",
+      "incorrect current password",
+      "password confirmation mismatch"
+    ],
+    "description": "Verifies invalid settings changes are rejected with a clear error.",
+    "steps": [
+      "Open Account Settings",
+      "Submit invalid changes"
+    ],
+    "expected": "Changes are rejected and the user sees a clear correction message."
+  },
+  {
+    "name": "Delete an account only after explicit confirmation",
+    "viewport": "desktop",
+    "covers": [
+      "account deletion",
+      "DELETE confirmation",
+      "current password requirement"
+    ],
+    "description": "Verifies deletion is protected.",
+    "steps": [
+      "Open Delete StreamVoice Account",
+      "Omit password or enter the wrong confirmation",
+      "Submit"
+    ],
+    "expected": "Deletion is blocked and the account remains signed in."
+  },
+  {
+    "name": "Show StreamVoice infrastructure status",
+    "viewport": "desktop",
+    "covers": [
+      "Railway backend configuration status",
+      "PostgreSQL service configuration status",
+      "infrastructure endpoint"
+    ],
+    "description": "Verifies the console shows configured infrastructure without secrets.",
+    "steps": [
+      "Sign in",
+      "Open Streamer Console",
+      "Scroll to Infrastructure"
+    ],
+    "expected": "The console clearly states that API routes are incomplete and PostgreSQL is not yet connected to the live API, without showing credentials."
+  }
+]
