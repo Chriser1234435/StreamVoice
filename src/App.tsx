@@ -530,12 +530,25 @@ function StreamVoiceApp() {
 
   useEffect(() => {
     if (!signedIn) return;
-    Promise.all([api.get('/api/chat-settings'), api.get('/api/tts-blocked-words')]).then(([chatSettings, blockedWordsResult]) => {
+    Promise.all([api.get('/api/chat-settings'), api.get('/api/tts-blocked-words'), api.get('/api/stream-settings'), api.get('/api/sounds')]).then(([chatSettings, blockedWordsResult, streamSettings, savedSounds]) => {
       const data = chatSettings.data;
       setChatTranslationEnabled(data?.enabled !== false);
       setChatLanguage(String(data?.language || 'en'));
       setChatLanguages(Array.isArray(data?.languages) ? data.languages : []);
       setBlockedWords(Array.isArray(blockedWordsResult.data?.words) ? blockedWordsResult.data.words : []);
+      const prefs = streamSettings.data || {};
+      setTtsEnabled(prefs.ttsEnabled !== false);
+      setReadMessages(prefs.readMessages !== false);
+      setReadGifts(prefs.readGifts !== false);
+      setVoice(['Calm', 'Neutral', 'Warm'].includes(prefs.voice) ? prefs.voice : 'Calm');
+      setRate(Number.isFinite(Number(prefs.rate)) ? Number(prefs.rate) : 0.9);
+      setVolume(Number.isFinite(Number(prefs.volume)) ? Number(prefs.volume) : 0.72);
+      const soundMap = savedSounds.data?.sounds || {};
+      setSounds(current => ({
+        TikTok: { ...current.TikTok, ...(soundMap.TikTok || {}) },
+        YouTube: { ...current.YouTube, ...(soundMap.YouTube || {}) },
+        Twitch: { ...current.Twitch, ...(soundMap.Twitch || {}) },
+      }));
     }).catch(() => undefined);
   }, [signedIn]);
 
@@ -588,6 +601,21 @@ function StreamVoiceApp() {
     }
   }
 
+  async function saveStreamPreferences(patch: Partial<{ ttsEnabled: boolean; readMessages: boolean; readGifts: boolean; voice: string; rate: number; volume: number }>) {
+    const preferences = { ttsEnabled, readMessages, readGifts, voice, rate, volume, ...patch };
+    try {
+      const { data } = await api.put('/api/stream-settings', preferences);
+      setTtsEnabled(data?.ttsEnabled !== false);
+      setReadMessages(data?.readMessages !== false);
+      setReadGifts(data?.readGifts !== false);
+      setVoice(['Calm', 'Neutral', 'Warm'].includes(data?.voice) ? data.voice : preferences.voice);
+      setRate(Number.isFinite(Number(data?.rate)) ? Number(data.rate) : preferences.rate);
+      setVolume(Number.isFinite(Number(data?.volume)) ? Number(data.volume) : preferences.volume);
+    } catch (error) {
+      addEvent(error instanceof Error ? error.message : 'Could not save TTS preferences.');
+    }
+  }
+
   useEffect(() => {
     if (!signedIn) return;
     const anyConnected = Object.values(platforms).some(state => state.connected);
@@ -597,22 +625,39 @@ function StreamVoiceApp() {
       try {
         const params = new URLSearchParams();
         if (chatAfterRef.current) params.set('after', String(chatAfterRef.current));
-        if (youtubePageTokenRef.current) params.set('pageToken', youtubePageTokenRef.current);
-        const { data } = await api.get('/api/chat/unified' + (params.toString() ? '?' + params.toString() : ''));
+        const unifiedPromise = api.get('/api/chat/unified' + (params.toString() ? '?' + params.toString() : ''));
+        const youtubeParams = new URLSearchParams();
+        if (youtubePageTokenRef.current) youtubeParams.set('pageToken', youtubePageTokenRef.current);
+        const youtubePromise = platforms.YouTube.connected
+          ? api.get('/api/youtube/chat' + (youtubeParams.toString() ? '?' + youtubeParams.toString() : '')).catch(() => ({ data: {} }))
+          : Promise.resolve({ data: {} });
+        const [unifiedResult, youtubeResult] = await Promise.all([unifiedPromise, youtubePromise]);
         if (stopped) return;
-        if (data?.nextPageToken) {
-          youtubePageTokenRef.current = String(data.nextPageToken);
-          setYoutubePageToken(String(data.nextPageToken));
+        const youtubeData = youtubeResult.data || {};
+        if (youtubeData.nextPageToken) {
+          youtubePageTokenRef.current = String(youtubeData.nextPageToken);
+          setYoutubePageToken(String(youtubeData.nextPageToken));
         }
+        const data = {
+          ...(unifiedResult.data || {}),
+          messages: [...(unifiedResult.data?.messages || []), ...(youtubeData.messages || [])],
+          pollingIntervalMillis: youtubeData.pollingIntervalMillis || unifiedResult.data?.pollingIntervalMillis || 5000,
+        };
         const incoming: ChatMessage[] = (data?.messages || []).map((message: ChatMessage) => ({ ...message, platform: message.platform || 'YouTube' }));
         if (incoming.length) {
           const newest = incoming.reduce((latest, message: ChatMessage & { createdAt?: number }) => Math.max(latest, Number(message.createdAt || Date.now())), chatAfterRef.current);
           chatAfterRef.current = newest;
           setChat(current => [...incoming, ...current].filter((item, index, all) => all.findIndex(other => other.id === item.id) === index).slice(0, 100));
           for (const message of incoming) {
-            if (!readMessages || !ttsEnabled || spokenIds.current.has(message.id)) continue;
+            if (spokenIds.current.has(message.id)) continue;
             spokenIds.current.add(message.id);
-            if (message.type === 'textMessageEvent') speak(message.author + ' says ' + message.text);
+            if (message.type === 'textMessageEvent') {
+              if (readMessages && ttsEnabled) speak(message.author + ' says ' + message.text);
+            } else if (message.type === 'streamEvent') {
+              const kind = String((message as any).kind || '');
+              if (['gift', 'follow', 'live'].includes(kind)) playEventSound(message.platform as Platform, kind as keyof SoundConfig);
+              if (readGifts && ttsEnabled) speak(message.text);
+            }
           }
           setYoutubeBootstrapped(true);
         }
@@ -788,7 +833,8 @@ function StreamVoiceApp() {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = rate;
     utterance.volume = volume;
-    const preferred = window.speechSynthesis.getVoices().find(item => /en/i.test(item.lang));
+    utterance.pitch = voice === 'Calm' ? 0.95 : voice === 'Warm' ? 1.05 : 1;
+    const preferred = window.speechSynthesis.getVoices().find(item => item.lang.toLowerCase().startsWith(chatLanguage.toLowerCase())) || window.speechSynthesis.getVoices().find(item => /en/i.test(item.lang));
     if (preferred) utterance.voice = preferred;
     window.speechSynthesis.speak(utterance);
   }
@@ -804,7 +850,7 @@ function StreamVoiceApp() {
       addEvent(kind + ' sound is not configured for ' + platform + '.');
       return;
     }
-    if (/^https?:\/\//.test(configuredSound)) {
+    if (/^(https?:\/\/|data:audio\/|\/api\/sounds\/)/.test(configuredSound)) {
       const audio = new Audio(configuredSound);
       audio.volume = volume;
       void audio.play().catch(() => addEvent('Browser blocked sound playback until a user gesture.'));
@@ -999,14 +1045,14 @@ function StreamVoiceApp() {
             <div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-semibold">TTS controls</h2><p className="text-sm text-slate-400">Tune the reader for a relaxed stream.</p></div><SlidersHorizontal size={18} className="text-slate-500" /></div>
             <div className="rounded-3xl border border-white/10 bg-slate-900 p-6">
               <div className="grid gap-5 sm:grid-cols-2">
-                <label className="rounded-2xl border border-white/10 bg-white/5 p-4"><div className="mb-2 text-xs text-slate-500">Voice</div><select value={voice} onChange={e => setVoice(e.target.value)} className="w-full bg-transparent text-sm outline-none"><option className="bg-slate-900">Calm</option><option className="bg-slate-900">Neutral</option><option className="bg-slate-900">Warm</option></select></label>
+                <label className="rounded-2xl border border-white/10 bg-white/5 p-4"><div className="mb-2 text-xs text-slate-500">Voice</div><select value={voice} onChange={e => { const value = e.target.value; setVoice(value); void saveStreamPreferences({ voice: value }); }} className="w-full bg-transparent text-sm outline-none"><option className="bg-slate-900">Calm</option><option className="bg-slate-900">Neutral</option><option className="bg-slate-900">Warm</option></select></label>
                 <label className="rounded-2xl border border-white/10 bg-white/5 p-4"><div className="mb-2 text-xs text-slate-500">Source</div><div className="text-sm">Twitch + YouTube + TikTok</div></label>
               </div>
               <div className="mt-5 space-y-4">
-                <label className="block rounded-2xl border border-white/10 bg-white/5 p-4"><div className="mb-3 flex justify-between text-sm"><span>Speech rate</span><span className="text-slate-400">{rate.toFixed(2)}×</span></div><input aria-label="Speech rate" className="w-full" type="range" min="0.6" max="1.4" step="0.05" value={rate} onChange={e => setRate(Number(e.target.value))} /></label>
-                <label className="block rounded-2xl border border-white/10 bg-white/5 p-4"><div className="mb-3 flex justify-between text-sm"><span>Volume</span><span className="text-slate-400">{Math.round(volume * 100)}%</span></div><input aria-label="Volume" className="w-full" type="range" min="0" max="1" step="0.01" value={volume} onChange={e => setVolume(Number(e.target.value))} /></label>
+                <label className="block rounded-2xl border border-white/10 bg-white/5 p-4"><div className="mb-3 flex justify-between text-sm"><span>Speech rate</span><span className="text-slate-400">{rate.toFixed(2)}×</span></div><input aria-label="Speech rate" className="w-full" type="range" min="0.6" max="1.4" step="0.05" value={rate} onChange={e => { const value = Number(e.target.value); setRate(value); void saveStreamPreferences({ rate: value }); }} /></label>
+                <label className="block rounded-2xl border border-white/10 bg-white/5 p-4"><div className="mb-3 flex justify-between text-sm"><span>Volume</span><span className="text-slate-400">{Math.round(volume * 100)}%</span></div><input aria-label="Volume" className="w-full" type="range" min="0" max="1" step="0.01" value={volume} onChange={e => { const value = Number(e.target.value); setVolume(value); void saveStreamPreferences({ volume: value }); }} /></label>
               </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3"><button onClick={() => setTtsEnabled(!ttsEnabled)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">{ttsEnabled ? 'Pause TTS' : 'Enable TTS'}</button><button onClick={() => setReadMessages(!readMessages)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">{readMessages ? 'Read chat' : 'Mute chat'}</button><button onClick={() => setReadGifts(!readGifts)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">{readGifts ? 'Read gifts' : 'Mute gifts'}</button></div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3"><button onClick={() => { const value = !ttsEnabled; setTtsEnabled(value); void saveStreamPreferences({ ttsEnabled: value }); }} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">{ttsEnabled ? 'Pause TTS' : 'Enable TTS'}</button><button onClick={() => { const value = !readMessages; setReadMessages(value); void saveStreamPreferences({ readMessages: value }); }} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">{readMessages ? 'Read chat' : 'Mute chat'}</button><button onClick={() => { const value = !readGifts; setReadGifts(value); void saveStreamPreferences({ readGifts: value }); }} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">{readGifts ? 'Read gifts' : 'Mute gifts'}</button></div>
               <div className="mt-5 rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4"><div className="mb-1 text-sm font-semibold">Automatic chat translation</div><div className="text-xs leading-5 text-slate-400">Translate incoming live chat into one language before it is sent to the Beat Saber in-game chat.</div><div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"><label className="block"><div className="mb-2 text-xs text-slate-500">Preferred language</div><select value={chatLanguage} onChange={e => { setChatLanguage(e.target.value); void saveChatTranslationSettings(chatTranslationEnabled, e.target.value); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm outline-none"><option value="en">English</option>{chatLanguages.filter(item => item.code !== 'en').map(item => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label><button onClick={() => { const next = !chatTranslationEnabled; setChatTranslationEnabled(next); void saveChatTranslationSettings(next, chatLanguage); }} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm">{chatTranslationEnabled ? 'Translation on' : 'Translation off'}</button></div></div>
               <div className="mt-5 rounded-2xl border border-rose-400/20 bg-rose-400/5 p-4"><div className="mb-1 text-sm font-semibold">TTS blocked words</div><div className="text-xs leading-5 text-slate-400">Add words that should prevent the entire message from being spoken. Blocking is case-insensitive, so a blocked word inside a sentence will also stop that message from being read aloud.</div><div className="mt-4 flex gap-2"><input value={blockedWordInput} onChange={e => setBlockedWordInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addBlockedWord(); } }} placeholder="Type a word to block" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm outline-none" /><button onClick={addBlockedWord} className="rounded-xl bg-white/10 px-4 py-2.5 text-sm font-medium">Block word</button></div>{blockedWords.length ? <div className="mt-3 flex flex-wrap gap-2">{blockedWords.map(word => <button key={word} onClick={() => removeBlockedWord(word)} title="Remove blocked word" className="rounded-full border border-white/10 bg-slate-950 px-3 py-1.5 text-xs text-slate-300">{word} ×</button>)}</div> : <div className="mt-3 text-xs text-slate-500">No blocked words yet.</div>}</div>
             </div>
@@ -1018,7 +1064,7 @@ function StreamVoiceApp() {
               <div className="mb-4 grid gap-2 sm:grid-cols-[auto_1fr_auto]"><div className="flex flex-wrap gap-2">{(['All', 'Twitch', 'YouTube', 'TikTok'] as const).map(filter => <button key={filter} onClick={() => setChatFilter(filter)} className={chatFilter === filter ? 'rounded-xl bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950' : 'rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300'}>{filter}</button>)}</div><input value={chatSearch} onChange={e => setChatSearch(e.target.value)} placeholder="Search chat…" className="min-w-0 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs outline-none" /><div className="flex gap-2"><button onClick={() => setChat([])} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">Clear</button><button onClick={() => setModerationPreview(!moderationPreview)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">{moderationPreview ? 'Moderation on' : 'Moderation off'}</button></div></div>
               <div className="mb-4 grid gap-2 sm:grid-cols-3"><div className="rounded-xl bg-white/5 p-3"><div className="text-[11px] text-slate-500">Messages</div><div className="mt-1 text-sm font-semibold">{chat.length}</div></div><div className="rounded-xl bg-white/5 p-3"><div className="text-[11px] text-slate-500">TTS</div><div className="mt-1 text-sm font-semibold">{ttsEnabled && readMessages ? 'Reading chat' : 'Muted'}</div></div><div className="rounded-xl bg-white/5 p-3"><div className="text-[11px] text-slate-500">Translation</div><div className="mt-1 text-sm font-semibold">{chatTranslationEnabled ? chatLanguage.toUpperCase() : 'Off'}</div></div></div>
               <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">{(() => { const visible = chat.filter(message => (chatFilter === 'All' || message.platform === chatFilter) && (!chatSearch.trim() || message.author.toLowerCase().includes(chatSearch.trim().toLowerCase()) || message.text.toLowerCase().includes(chatSearch.trim().toLowerCase()))); return visible.length ? visible.map(message => <div key={message.id} className="rounded-xl bg-white/5 px-3 py-2.5"><div className="flex items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-2"><span className="truncate text-xs font-medium text-cyan-200">{message.author}</span><span className="rounded-full border border-white/10 px-1.5 py-0.5 text-[9px] text-slate-500">{message.platform || 'Unknown'}</span></div><span className="text-[10px] text-slate-600">{message.type === 'textMessageEvent' ? 'chat' : message.type}</span></div><div className="mt-1 break-words text-xs text-slate-300">{message.text}</div></div>) : <div className="p-8 text-center text-sm text-slate-500">{chat.length ? 'No messages match your filter.' : platforms.YouTube.live ? 'Waiting for incoming chat…' : 'Connect a platform and go live to populate the Chat Center.'}</div>; })()}</div>
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/10 bg-cyan-400/5 px-3 py-2.5 text-xs"><span className="text-slate-400">TTS voice: <span className="text-slate-200">{voice}</span> · {rate.toFixed(2)}× · {Math.round(volume * 100)}%</span><button onClick={() => setTtsEnabled(!ttsEnabled)} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs">{ttsEnabled ? 'Pause TTS' : 'Enable TTS'}</button></div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/10 bg-cyan-400/5 px-3 py-2.5 text-xs"><span className="text-slate-400">TTS voice: <span className="text-slate-200">{voice}</span> · {rate.toFixed(2)}× · {Math.round(volume * 100)}%</span><button onClick={() => { const value = !ttsEnabled; setTtsEnabled(value); void saveStreamPreferences({ ttsEnabled: value }); }} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs">{ttsEnabled ? 'Pause TTS' : 'Enable TTS'}</button></div>
             </div>
           </section>
         </div>

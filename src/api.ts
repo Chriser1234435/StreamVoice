@@ -1,7 +1,8 @@
 type ApiResult<T = any> = { data: T };
+const apiBase = String(import.meta.env.VITE_API_BASE_URL || '');
 
 async function request<T = any>(method: string, path: string, body?: unknown): Promise<ApiResult<T>> {
-  const response = await fetch(path, {
+  const response = await fetch(apiBase + path, {
     method,
     credentials: 'include',
     headers: body === undefined ? { Accept: 'application/json' } : {
