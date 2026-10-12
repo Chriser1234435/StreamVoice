@@ -9,7 +9,7 @@ This is an isolated migration implementation. It is not yet a production replace
 - Beat Saber pairing, heartbeat, event polling/acknowledgement, console chat, test event, BSR request queue, and sound retrieval/upload endpoints.
 - OAuth start and code-exchange foundations for TikTok, YouTube, and Twitch; access/refresh tokens are encrypted using AES-256-GCM before storage.
 - Password hashes use scrypt; session tokens are random and only SHA-256 hashes are stored.
-- The API binds to 127.0.0.1 by default. Put a trusted reverse proxy in front for external traffic.
+- The API binds to `127.0.0.1` by default to stay private on a local VM. The included Dockerfile explicitly sets `HOST=0.0.0.0` inside the container so Railway can reach it. Never expose PostgreSQL publicly, and do not route production traffic here until the deployment has its own configured database, required secrets, TLS, and end-to-end acceptance tests.
 
 ## Start
 1. Copy `.env.server.example` to `.env` (do not commit `.env`).

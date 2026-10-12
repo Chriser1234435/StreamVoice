@@ -131,5 +131,5 @@ app.post('/api/admin/users/:id/unpair-beatsaber',needsDb,async(req,res,next)=>{t
 
 app.use((req,res)=>fail(res,404,'SV-ROUTE-404',`Route not implemented: ${req.method} ${req.path}`));
 app.use((err:unknown,_req:Request,res:Response,_next:NextFunction)=>{console.error('StreamVoice API request failed:',err instanceof Error?err.message:'unknown error');fail(res,500,'SV-SERVER-500','The server could not complete the request.');});
-if(process.env.NODE_ENV!=='test'){const server=app.listen(port,'127.0.0.1',()=>console.log(`StreamVoice API listening on 127.0.0.1:${port}`));const stop=async()=>{server.close();if(pool)await pool.end();process.exit(0);};process.on('SIGTERM',stop);process.on('SIGINT',stop);}
+if(process.env.NODE_ENV!=='test'){const host=process.env.HOST||'127.0.0.1';const server=app.listen(port,host,()=>console.log(`StreamVoice API listening on ${host}:${port}`));const stop=async()=>{server.close();if(pool)await pool.end();process.exit(0);};process.on('SIGTERM',stop);process.on('SIGINT',stop);}
 export {app,pool};
