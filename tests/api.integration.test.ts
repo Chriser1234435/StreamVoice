@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createCipheriv, createHmac, randomBytes } from 'node:crypto';
 
 let server: ReturnType<import('express').Express['listen']>;
@@ -21,6 +22,8 @@ before(async () => {
   const module = await import('../server/index.js');
   app = module.app;
   dbPool = module.pool;
+  const pairingMigration = await readFile(new URL('../migrations/0005_in_game_pairing_codes.sql', import.meta.url), 'utf8');
+  await dbPool?.query(pairingMigration);
   await dbPool?.query("DELETE FROM sv_accounts WHERE username='integration_user'");
   await new Promise<void>((resolve) => {
     server = app.listen(0, '127.0.0.1', () => {
@@ -85,12 +88,18 @@ test('signup, session restoration, settings and blocked-word persistence work', 
 });
 
 test('Beat Saber pairing, heartbeat, chat moderation, BSR and event queue work', async () => {
-  const pair = await call('/api/beat-saber/pair', 'POST', {});
-  assert.equal(pair.status, 200);
+  const pair = await call('/api/beat-saber/pair-code', 'POST', { gameVersion: '1.40.8_7379', modVersion: '0.1.1' }, '');
+  assert.equal(pair.status, 201);
   pairingCode = String((await pair.json() as any).pairingCode);
   assert.match(pairingCode, /^\d{5}$/);
+  const pairStatus = await call('/api/beat-saber/pair-status?code=' + pairingCode, 'GET', undefined, '');
+  assert.equal((await pairStatus.json() as any).claimed, false);
+  const claim = await call('/api/beat-saber/claim-code', 'POST', { code: pairingCode });
+  assert.equal(claim.status, 200);
+  const claimedStatus = await call('/api/beat-saber/pair-status?code=' + pairingCode, 'GET', undefined, '');
+  assert.equal((await claimedStatus.json() as any).claimed, true);
 
-  const heartbeat = await call('/api/beat-saber/heartbeat', 'POST', { pairingCode, gameVersion: '1.40.8', modVersion: 'test' }, '');
+  const heartbeat = await call('/api/beat-saber/heartbeat', 'POST', { pairingCode, gameVersion: '1.40.8_7379', modVersion: '0.1.1' }, '');
   assert.equal(heartbeat.status, 200);
 
   const blocked = await call('/api/beat-saber/chat', 'POST', { text: 'this has SpoilerWord inside', author: 'Viewer', platform: 'YouTube' });
