@@ -143,6 +143,22 @@ test('sound upload, admin session and logout work', async () => {
   assert.equal(audio.headers.get('content-type')?.split(';')[0], 'audio/mpeg');
   assert.deepEqual([...new Uint8Array(await audio.arrayBuffer())], [1, 2, 3]);
 
+  const soundManifestResponse = await call('/api/beat-saber/sounds?code=' + pairingCode, 'GET', undefined, '');
+  assert.equal(soundManifestResponse.status, 200);
+  const soundManifest = await soundManifestResponse.json() as any;
+  assert.equal(soundManifest.sounds.length, 1);
+  assert.equal(soundManifest.sounds[0].platform, 'YouTube');
+  assert.equal(soundManifest.sounds[0].kind, 'follow');
+  assert.equal(soundManifest.sounds[0].size, 3);
+  assert.ok(soundManifest.sounds[0].updatedAt);
+  assert.equal('data' in soundManifest.sounds[0], false, 'manifest must not inline the audio payload');
+  const pairedAudio = await call('/api/beat-saber/sounds/YouTube/follow?code=' + pairingCode, 'GET', undefined, '');
+  assert.equal(pairedAudio.status, 200);
+  assert.equal(pairedAudio.headers.get('content-type')?.split(';')[0], 'audio/mpeg');
+  assert.deepEqual([...new Uint8Array(await pairedAudio.arrayBuffer())], [1, 2, 3]);
+  const deniedAudio = await call('/api/beat-saber/sounds/YouTube/follow?code=99999', 'GET', undefined, '');
+  assert.equal(deniedAudio.status, 403);
+
   const admin = await call('/api/admin/login', 'POST', { username: 'test-admin', password: 'test-admin-password-long' }, '');
   assert.equal(admin.status, 200);
   const adminCookie = (admin.headers.get('set-cookie') || '').split(';')[0];
