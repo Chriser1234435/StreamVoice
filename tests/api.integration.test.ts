@@ -19,6 +19,14 @@ before(async () => {
   process.env.ADMIN_PASSWORD = 'test-admin-password-long';
   process.env.TIKTOK_CLIENT_KEY = 'test-tiktok-key';
   process.env.TIKTOK_CLIENT_SECRET = 'test-tiktok-secret';
+  process.env.API_PUBLIC_URL = 'https://streamvoice-api-production-9b70.up.railway.app';
+  delete process.env.YOUTUBE_CLIENT_ID;
+  delete process.env.YOUTUBE_CLIENT_SECRET;
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  delete process.env.TWITCH_CLIENT_ID;
+  delete process.env.TWITCH_CLIENT_SECRET;
+  delete process.env.GOOGLE_TRANSLATE_API_KEY;
   const module = await import('../server/index.js');
   app = module.app;
   dbPool = module.pool;
@@ -48,6 +56,18 @@ async function call(path: string, method = 'GET', body?: unknown, cookie = sessi
   if (cookie) headers.cookie = cookie;
   return fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
 }
+
+test('integration config exposes callback URLs and missing variable names without exposing secrets', async () => {
+  const response = await call('/api/integrations/config', 'GET', undefined, '');
+  assert.equal(response.status, 200);
+  const config = await response.json() as any;
+  assert.equal(config.TikTok, true);
+  assert.equal(config.callbackUrls.TikTok, 'https://streamvoice-api-production-9b70.up.railway.app/api/tiktok/complete');
+  assert.equal(config.callbackUrls.YouTube, 'https://streamvoice-api-production-9b70.up.railway.app/api/youtube/complete');
+  assert.deepEqual(config.missingVariables.TikTok, []);
+  assert.deepEqual(config.missingVariables.YouTube, ['YOUTUBE_CLIENT_ID', 'YOUTUBE_CLIENT_SECRET']);
+  assert.equal(JSON.stringify(config).includes('test-tiktok-secret'), false);
+});
 
 test('signup, session restoration, settings and blocked-word persistence work', async () => {
   const signup = await call('/api/auth/signup', 'POST', {
