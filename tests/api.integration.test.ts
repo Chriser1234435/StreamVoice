@@ -88,7 +88,7 @@ test('Beat Saber pairing, heartbeat, chat moderation, BSR and event queue work',
   const pair = await call('/api/beat-saber/pair', 'POST', {});
   assert.equal(pair.status, 200);
   pairingCode = String((await pair.json() as any).pairingCode);
-  assert.match(pairingCode, /^[A-F0-9]{6}$/);
+  assert.match(pairingCode, /^\d{5}$/);
 
   const heartbeat = await call('/api/beat-saber/heartbeat', 'POST', { pairingCode, gameVersion: '1.40.8', modVersion: 'test' }, '');
   assert.equal(heartbeat.status, 200);
