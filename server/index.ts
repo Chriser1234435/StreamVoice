@@ -19,6 +19,8 @@ app.use(cors({origin:(origin,callback)=>{if(!origin||allowedOrigins.includes(ori
 app.use(helmet());
 app.use(express.json({ limit: '8mb', verify: (req, _res, buffer) => { (req as Request & { rawBody?: string }).rawBody = buffer.toString('utf8'); } }));
 app.use(rateLimit({ windowMs: 60_000, limit: 180, standardHeaders: 'draft-7', legacyHeaders: false }));
+// Versioned API alias: /api/v1/* maps to the same handlers as /api/* while preserving query strings.
+app.use((req, _res, next) => { if (req.url === '/api/v1' || req.url.startsWith('/api/v1/')) req.url = '/api' + req.url.slice('/api/v1'.length); next(); });
 const authRateLimit = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many login or signup attempts. Please wait 15 minutes and try again.', code: 'SV-AUTH-429' } });
 const languages = [{code:'en',label:'English'},{code:'es',label:'Spanish'},{code:'fr',label:'French'},{code:'de',label:'German'},{code:'it',label:'Italian'},{code:'pt',label:'Portuguese'},{code:'ja',label:'Japanese'},{code:'ko',label:'Korean'},{code:'zh',label:'Chinese'},{code:'ru',label:'Russian'},{code:'ar',label:'Arabic'},{code:'hi',label:'Hindi'},{code:'nl',label:'Dutch'},{code:'pl',label:'Polish'},{code:'tr',label:'Turkish'}];
 type User = { id:string; email:string; username:string; preferredLanguage:string };

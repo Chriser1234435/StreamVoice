@@ -40,6 +40,13 @@ test('language catalog is available without account database', async () => {
   assert.ok(body.languages.some((language: any) => language.code === 'es'));
 });
 
+test('versioned API routes map to the same handlers', async () => {
+  const response = await fetch(base + '/api/v1/languages');
+  assert.equal(response.status, 200);
+  const body = await response.json() as any;
+  assert.ok(body.languages.some((language: any) => language.code === 'en'));
+});
+
 test('signup refuses to claim success without database', async () => {
   const response = await fetch(base + '/api/auth/signup', {
     method: 'POST',
